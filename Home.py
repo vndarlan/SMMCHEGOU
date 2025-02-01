@@ -26,7 +26,7 @@ h1, h2, h3, h4, h5, h6 {
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # Conteúdo da página de layout
-st.markdown("<h1>Bem-vindo à Aplicação de Engajamento GC</h1>", unsafe_allow_html=True)
+st.markdown("<h1>Bem-vindo à Aplicação de Engajamento Grupo Chegou</h1>", unsafe_allow_html=True)
 st.markdown(
     """
     ### Sobre a Aplicação
