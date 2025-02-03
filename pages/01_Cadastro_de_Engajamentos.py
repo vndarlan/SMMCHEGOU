@@ -40,7 +40,7 @@ div.stButton > button:hover {
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # --- Cabeçalho ---
-st.markdown("<h3>Registre de Engajamentos</h3>", unsafe_allow_html=True)
+st.markdown("<h3>Registro de Engajamentos</h3>", unsafe_allow_html=True)
 
 # --- Funções para gerenciar o banco de dados SQLite ---
 
