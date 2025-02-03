@@ -26,15 +26,14 @@ h1, h2, h3, h4, h5, h6 {
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # Conteúdo da página de layout
-st.markdown("<h1>Bem-vindo à Aplicação de Engajamento</h1>", unsafe_allow_html=True)
+st.markdown("<h1>Bem-vindo ao GC Engajamento</h1>", unsafe_allow_html=True)
 st.markdown(
     """
-    ### Sobre a Aplicação
+    ### Sobre o Micro-SaaS
 
-    Nesta aplicação você poderá:
-    - Visualizar informações de layout e instruções gerais.
+    - Compre engajmento em poucos cliques 
     - Acessar a página de **API de Engajamento** para enviar pedidos à plataforma.
     
-    Utilize o menu lateral (ou a navegação do Streamlit) para acessar a página de API.
+    Utilize o menu lateral para acessar a página de API.
     """
 )
