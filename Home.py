@@ -4,7 +4,7 @@ import streamlit as st
 st.set_page_config(
     page_title="SMMCHEGOU",  # Título que aparecerá na aba do navegador
     page_icon=":heart:",              # Opcional: ícone (pode ser um emoji ou caminho para um arquivo)
-    layout="wide"                     # Opcional: define o layout da página
+    layout="centered"                     # Opcional: define o layout da página
 )
 
 # Injetando o CSS customizado para manter a identidade visual
@@ -33,11 +33,9 @@ h1, h2, h3, h4, h5, h6 {
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # Conteúdo da página de layout
-st.markdown("<h1>Bem-vindo ao GC Engajamento</h1>", unsafe_allow_html=True)
+st.markdown("<h1>SMMCHEGOU</h1>", unsafe_allow_html=True)
 st.markdown(
     """
-    ### Sobre o Micro-SaaS
-
     - Compre engajmento em poucos cliques 
     - Acessar a página de **API de Engajamento** para enviar pedidos à plataforma.
     
