@@ -1,6 +1,13 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode
+
+st.set_page_config(
+    page_title="SMMCHEGOU",  # Título que aparecerá na aba do navegador
+    page_icon=":heart:",              # Opcional: ícone (pode ser um emoji ou caminho para um arquivo)
+    layout="wide"                     # Opcional: define o layout da página
+)
 
 # --- Injeção de CSS customizado ---
 custom_css = """
@@ -39,20 +46,18 @@ div.stButton > button:hover {
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- Cabeçalho ---
 st.markdown("<h3>Registro de Engajamentos</h3>", unsafe_allow_html=True)
 
 # --- Funções para gerenciar o banco de dados SQLite ---
-
 def init_db():
     conn = sqlite3.connect("engajamentos.db")
     c = conn.cursor()
-    # Cria a tabela se não existir (sem a coluna 'funcionando')
     c.execute('''
         CREATE TABLE IF NOT EXISTS engajamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT NOT NULL,
-            engajamento_id TEXT NOT NULL
+            engajamento_id TEXT NOT NULL,
+            funcionando TEXT NOT NULL DEFAULT 'Sim'
         )
     ''')
     conn.commit()
@@ -84,14 +89,15 @@ def get_engajamentos():
     conn.close()
     return rows
 
-def update_funcionamento(row_id, funcionando):
+def update_engajamento(row_id, nome, engajamento_id, funcionando):
     conn = sqlite3.connect("engajamentos.db")
     c = conn.cursor()
-    c.execute("UPDATE engajamentos SET funcionando = ? WHERE id = ?", (funcionando, row_id))
+    c.execute("UPDATE engajamentos SET nome=?, engajamento_id=?, funcionando=? WHERE id=?", 
+              (nome, engajamento_id, funcionando, row_id))
     conn.commit()
     conn.close()
 
-# Inicializa o banco e adiciona a coluna se necessário
+# Inicializa o banco de dados e garante que a coluna 'funcionando' exista
 init_db()
 add_funcionando_column()
 
@@ -107,27 +113,33 @@ with st.form("cadastro_engajamento"):
         else:
             st.error("Por favor, preencha ambos os campos.")
 
-# --- Exibe os engajamentos cadastrados ---
-st.markdown("### Engajamentos Salvos")
+# --- Exibe os engajamentos cadastrados em uma tabela editável usando AgGrid ---
+st.markdown("### Engajamentos Cadastrados (Tabela Editável)")
 rows = get_engajamentos()
 if rows:
-    df = pd.DataFrame(rows, columns=["id", "Nome", "ID do Engajamento", "Funcionando?"])
-    st.table(df)
+    df = pd.DataFrame(rows, columns=["ID", "Nome", "ID do Engajamento", "Funcionando?"])
+    
+    # Configura o AgGrid
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_pagination(paginationAutoPageSize=True)
+    gb.configure_default_column(editable=True)
+    # Torna a coluna "ID" somente leitura
+    gb.configure_column("ID", editable=False)
+    gridOptions = gb.build()
+
+    grid_response = AgGrid(
+        df,
+        gridOptions=gridOptions,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+        update_mode=GridUpdateMode.MODEL_CHANGED,
+        fit_columns_on_grid_load=True,
+    )
+    edited_df = grid_response['data']
+
+    if st.button("Salvar alterações"):
+        for _, row in edited_df.iterrows():
+            update_engajamento(row["ID"], row["Nome"], row["ID do Engajamento"], row["Funcionando?"])
+        st.success("Atualizações salvas com sucesso!")
+        st.experimental_rerun()
 else:
     st.info("Nenhum engajamento cadastrado ainda.")
-
-# --- Botões para atualizar o status de funcionamento ---
-st.markdown("### Atualizar Status de Funcionamento")
-if rows:
-    for row in rows:
-        col1, col2 = st.columns([3,1])
-        with col1:
-            st.write(f"**Nome:** {row[1]} | **ID:** {row[2]} | **Funcionando?:** {row[3]}")
-        with col2:
-            if row[3] == "Sim":
-                if st.button("Marcar como Não Funcionando", key=f"btn_{row[0]}"):
-                    update_funcionamento(row[0], "Não")
-                    st.success(f"Engajamento '{row[1]}' atualizado para Não Funcionando.")
-                    st.experimental_rerun()
-            else:
-                st.write("Já marcado como Não")

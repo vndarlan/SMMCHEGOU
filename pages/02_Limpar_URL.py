@@ -1,4 +1,11 @@
+# 03_URL_Limpa.py
 import re
+
+st.set_page_config(
+    page_title="SMMCHEGOU",  # Título que aparecerá na aba do navegador
+    page_icon=":heart:",              # Opcional: ícone (pode ser um emoji ou caminho para um arquivo)
+    layout="wide"                     # Opcional: define o layout da página
+)
 
 def extrair_ids(url):
     """

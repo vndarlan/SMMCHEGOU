@@ -1,4 +1,11 @@
+# Home.py
 import streamlit as st
+
+st.set_page_config(
+    page_title="SMMCHEGOU",  # Título que aparecerá na aba do navegador
+    page_icon=":heart:",              # Opcional: ícone (pode ser um emoji ou caminho para um arquivo)
+    layout="wide"                     # Opcional: define o layout da página
+)
 
 # Injetando o CSS customizado para manter a identidade visual
 custom_css = """
