@@ -1,11 +1,7 @@
-<<<<<<< HEAD
 streamlit
 streamlit-aggrid
 requests
 pandas
-=======
-streamlit
-streamlit-aggrid
-requests
-pandas
->>>>>>> 27e765af1080bac57d6469e4f61ec8a0fb272339
+selenium
+beautifulsoup4
+webdriver-manager
