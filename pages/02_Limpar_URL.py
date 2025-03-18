@@ -71,6 +71,31 @@ st.markdown(custom_css, unsafe_allow_html=True)
 
 st.markdown("<h3>🧹 Limpar URLs de Anúncios</h3>", unsafe_allow_html=True)
 
+def check_selenium_available():
+    """Checks if Selenium can be properly initialized in the current environment"""
+    try:
+        if not SELENIUM_AVAILABLE:
+            return False
+            
+        # Try to initialize a headless browser to see if it works
+        options = Options()
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        
+        # Using a very short timeout to quickly check availability
+        try:
+            service = Service(ChromeDriverManager().install())
+            browser = webdriver.Chrome(service=service, options=options)
+            browser.quit()
+            return True
+        except Exception as e:
+            st.warning(f"Selenium initialization failed: {str(e)}")
+            return False
+    except:
+        return False
+
 def extrair_url_real_via_browser(url):
     """
     Usa um navegador headless para abrir a URL do anúncio e extrair a URL real.
@@ -450,10 +475,68 @@ def extrair_via_graph_api(url, token=None):
         
     return None
 
+# This is a fallback method that doesn't rely on Selenium for Streamlit Cloud
+def extract_url_without_selenium(url):
+    """
+    A simpler method to extract the real URL by using just requests and BeautifulSoup.
+    Not as powerful as Selenium but works in restricted environments.
+    """
+    try:
+        # First try the mobile site approach which doesn't need Selenium
+        extracted_url = extrair_via_api_mobile(url)
+        if extracted_url:
+            return extracted_url
+            
+        # If mobile approach fails, try a direct request
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, allow_redirects=True, timeout=10)
+        
+        # Check if we were redirected to a more useful URL
+        if response.url != url and '/videos/' in response.url:
+            return response.url
+            
+        # Parse with BeautifulSoup
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Look for og:url meta tag
+        og_url = soup.find('meta', property='og:url')
+        if og_url and og_url.get('content'):
+            return og_url['content']
+            
+        # Look for video meta tags
+        og_video = soup.find('meta', property='og:video:url')
+        if og_video and og_video.get('content'):
+            return og_video['content']
+            
+        # Look for canonical link
+        canonical = soup.find('link', rel='canonical')
+        if canonical and canonical.get('href'):
+            return canonical['href']
+            
+        # If all else fails, extract any facebook.com links that might be useful
+        all_links = soup.find_all('a')
+        for link in all_links:
+            href = link.get('href')
+            if href and 'facebook.com' in href and any(x in href for x in ['/videos/', '/watch/', '/photo/']):
+                # Make absolute if relative URL
+                if not href.startswith('http'):
+                    href = 'https://www.facebook.com' + href
+                return href
+                
+    except Exception as e:
+        st.warning(f"Error in non-Selenium extraction: {str(e)}")
+        
+    return None
+
+# Modified version of limpar_url_facebook that handles Streamlit Cloud limitations
 def limpar_url_facebook(url):
     """
     Tenta obter a URL real de um anúncio do Facebook.
     Retorna apenas a URL base sem parâmetros de consulta (sem o que vem após o '?').
+    Modified to work on Streamlit Cloud.
     """
     if not url or 'facebook.com' not in url:
         return url, "erro", "URL inválida"
@@ -477,14 +560,24 @@ def limpar_url_facebook(url):
             mapped_url = mapped_url.split('?')[0]
         return mapped_url, "sucesso", "URL encontrada no mapeamento"
     
-    # Obter a URL real
-    if not SELENIUM_AVAILABLE:
-        return url, "erro", "Não é possível processar a URL"
+    # Determine if we can use Selenium in this environment
+    selenium_works = check_selenium_available()
     
     try:
-        real_url = extrair_url_real_via_browser(url)
+        if selenium_works and SELENIUM_AVAILABLE:
+            # Try the Selenium approach first if available
+            real_url = extrair_url_real_via_browser(url)
+        
+        # If Selenium failed or isn't available, try alternative methods
+        if not real_url:
+            st.info("Selenium não disponível ou falhou. Usando método alternativo.")
+            real_url = extract_url_without_selenium(url)
         
         if real_url:
+            # Ensure real_url is a string (not bytes)
+            if isinstance(real_url, bytes):
+                real_url = real_url.decode('utf-8')
+                
             # Remover tudo após o '?' na URL
             if '?' in real_url:
                 clean_url = real_url.split('?')[0]
@@ -499,10 +592,45 @@ def limpar_url_facebook(url):
         else:
             return url, "aviso", "Não foi possível extrair a URL"
     except Exception as e:
-        return url, "erro", f"Erro durante processamento"
+        return str(url), "erro", f"Erro durante processamento: {str(e)}"
+
+# Safely displays URL results handling different return types
+def display_url_results(original_url, cleaned_url_tuple):
+    """Safely displays URL results handling different return types"""
+    url_limpa, status, mensagem = cleaned_url_tuple
     
-    # Se chegou até aqui, houve um problema
-    return url, "erro", "Processamento falhou"
+    # Ensure url_limpa is a string
+    if isinstance(url_limpa, bytes):
+        url_limpa = url_limpa.decode('utf-8')
+    
+    st.markdown("### URL Original:")
+    st.code(original_url)
+    
+    st.markdown("### URL Limpa:")
+    st.code(url_limpa)
+    
+    # Result message
+    if status == "sucesso":
+        st.success(f"✅ {mensagem}")
+    elif status == "aviso":
+        st.warning(f"⚠️ {mensagem}")
+    else:
+        st.error(f"❌ {mensagem}")
+    
+    # Display parsed URL carefully
+    try:
+        parsed = urlparse(url_limpa)
+        components = {
+            "domínio": parsed.netloc,
+            "caminho": parsed.path,
+            "parâmetros": parse_qs(parsed.query) if parsed.query else {}
+        }
+        st.markdown("#### Componentes da URL:")
+        st.json(components)
+    except Exception as e:
+        st.error(f"Erro ao analisar componentes da URL: {str(e)}")
+    
+    return url_limpa
 
 def processar_lote_urls(texto_urls):
     """Processa um lote de URLs, uma por linha e retorna resultados com status."""
@@ -545,7 +673,7 @@ with st.container():
                     start_time = time.time()
                     
                     # Processar a URL
-                    url_limpa = limpar_url_facebook(url_input)
+                    cleaned_url_tuple = limpar_url_facebook(url_input)
                     
                     # Calcular duração
                     duration = time.time() - start_time
@@ -553,8 +681,8 @@ with st.container():
                     # Salvar informações do processo
                     st.session_state.último_processo = {
                         "original": url_input,
-                        "limpa": url_limpa,
-                        "sucesso": url_limpa != url_input,
+                        "limpa": cleaned_url_tuple[0],
+                        "sucesso": cleaned_url_tuple[1] == "sucesso",
                         "duração": f"{duration:.2f} segundos"
                     }
                     
@@ -567,41 +695,44 @@ with st.container():
                         st.code(url_input, language="text")
                         
                         # Análise da URL original
-                        parsed = urlparse(url_input)
-                        st.markdown("#### Componentes da URL Original:")
-                        st.json({
-                            "domínio": parsed.netloc,
-                            "caminho": parsed.path,
-                            "parâmetros": parse_qs(parsed.query)
-                        })
+                        try:
+                            parsed = urlparse(url_input)
+                            st.markdown("#### Componentes da URL Original:")
+                            st.json({
+                                "domínio": parsed.netloc,
+                                "caminho": parsed.path,
+                                "parâmetros": parse_qs(parsed.query) if parsed.query else {}
+                            })
+                        except Exception as e:
+                            st.error(f"Erro ao analisar URL original: {str(e)}")
                     
                     with col2:
+                        url_limpa = cleaned_url_tuple[0]
                         st.markdown("### URL Limpa:")
                         st.code(url_limpa, language="text")
                         
                         # Análise da URL limpa
                         if url_limpa != url_input:
-                            parsed = urlparse(url_limpa)
-                            st.markdown("#### Componentes da URL Limpa:")
-                            st.json({
-                                "domínio": parsed.netloc,
-                                "caminho": parsed.path,
-                                "parâmetros": parse_qs(parsed.query)
-                            })
+                            try:
+                                parsed = urlparse(url_limpa)
+                                st.markdown("#### Componentes da URL Limpa:")
+                                st.json({
+                                    "domínio": parsed.netloc,
+                                    "caminho": parsed.path,
+                                    "parâmetros": parse_qs(parsed.query) if parsed.query else {}
+                                })
+                            except Exception as e:
+                                st.error(f"Erro ao analisar URL limpa: {str(e)}")
                         
                     # Informações do processo
                     st.markdown("### Informações do Processo:")
                     st.info(f"⏱️ Tempo de processamento: {st.session_state.último_processo['duração']}")
                 else:
-                    # Exibição simplificada
-                    st.markdown("### URL Original:")
-                    st.code(url_input)
-                    
-                    st.markdown("### URL Limpa:")
-                    st.code(url_limpa)
+                    # Using the safe display function
+                    url_limpa = display_url_results(url_input, cleaned_url_tuple)
                 
                 # Resultado final e botões de ação
-                if url_limpa != url_input:
+                if cleaned_url_tuple[1] == "sucesso":
                     st.success("✅ URL processada com sucesso!")
                     
                     # Adicionar botão para usar na compra
@@ -610,7 +741,7 @@ with st.container():
                         st.session_state.url_para_compra = url_limpa
                         st.info("URL pronta para compra. Acesse a página 'Comprar' para continuar.")
                 else:
-                    st.warning("⚠️ Não foi possível limpar esta URL. A URL original foi mantida.")
+                    st.warning("⚠️ Não foi possível limpar esta URL ou ocorreu um erro no processo.")
                 
                 # Botão para copiar para a área de transferência
                 st.markdown(
@@ -659,8 +790,8 @@ with st.container():
                         status_text.text(f"Processando URL {i+1} de {len(urls)}...")
                         
                         # Processar URL
-                        url_limpa = limpar_url_facebook(url)
-                        resultados.append((url, url_limpa))
+                        cleaned_url_tuple = limpar_url_facebook(url)
+                        resultados.append((url, cleaned_url_tuple))
                     
                     # Completar o progresso
                     progress_bar.progress(1.0)
@@ -671,27 +802,41 @@ with st.container():
                     
                     if batch_details:
                         # Criar uma tabela de resultados detalhada
-                        for i, (original, limpa) in enumerate(resultados, 1):
+                        for i, (original, clean_tuple) in enumerate(resultados, 1):
                             with st.expander(f"URL {i}"):
+                                url_limpa, status, mensagem = clean_tuple
+                                
+                                # Ensure url_limpa is a string
+                                if isinstance(url_limpa, bytes):
+                                    url_limpa = url_limpa.decode('utf-8')
+                                
                                 st.markdown("**Original:**")
                                 st.code(original)
                                 st.markdown("**Limpa:**")
-                                st.code(limpa)
+                                st.code(url_limpa)
                                 
-                                if limpa != original:
-                                    st.success("✅ URL limpa com sucesso!")
+                                if status == "sucesso":
+                                    st.success(f"✅ {mensagem}")
+                                elif status == "aviso":
+                                    st.warning(f"⚠️ {mensagem}")
                                 else:
-                                    st.warning("⚠️ Sem alterações")
+                                    st.error(f"❌ {mensagem}")
                     else:
                         # Criar uma tabela resumida de resultados
                         tabela_dados = []
-                        for i, (original, limpa) in enumerate(resultados, 1):
-                            status = "✅ Limpa" if limpa != original else "⚠️ Sem alterações"
+                        for i, (original, clean_tuple) in enumerate(resultados, 1):
+                            url_limpa, status, mensagem = clean_tuple
+                            
+                            # Ensure url_limpa is a string
+                            if isinstance(url_limpa, bytes):
+                                url_limpa = url_limpa.decode('utf-8')
+                                
+                            status_icon = "✅" if status == "sucesso" else "⚠️" if status == "aviso" else "❌"
                             tabela_dados.append({
                                 "URL #": i,
                                 "URL Original": original[:50] + "..." if len(original) > 50 else original,
-                                "URL Limpa": limpa[:50] + "..." if len(limpa) > 50 else limpa,
-                                "Status": status
+                                "URL Limpa": url_limpa[:50] + "..." if len(url_limpa) > 50 else url_limpa,
+                                "Status": f"{status_icon} {mensagem}"
                             })
                         
                         # Exibir tabela
@@ -699,7 +844,10 @@ with st.container():
                     
                     # Mostrar um resumo das URLs limpas
                     st.markdown("### Todas as URLs Limpas:")
-                    todas_limpas = "\n".join([limpa for _, limpa in resultados])
+                    todas_limpas = "\n".join([clean_tuple[0] if isinstance(clean_tuple[0], str) 
+                                             else clean_tuple[0].decode('utf-8') if isinstance(clean_tuple[0], bytes)
+                                             else str(clean_tuple[0])
+                                             for _, clean_tuple in resultados])
                     st.code(todas_limpas)
                     
                     # Botão para baixar as URLs limpas
@@ -713,9 +861,7 @@ with st.container():
                     # Botão para usar na compra
                     if st.button("🛒 Usar estas URLs para comprar engajamento", key="usar_urls_lote"):
                         # Armazenar URLs para uso na página de compra
-                        st.session_state.urls_para_compra = [limpa for _, limpa in resultados]
+                        st.session_state.urls_para_compra = [clean_tuple[0] for _, clean_tuple in resultados]
                         st.info("URLs prontas para compra. Acesse a página 'Comprar' para continuar.")
             else:
                 st.error("❌ Por favor, insira pelo menos uma URL para processar.")
-
-# Remove as seções não necessárias
